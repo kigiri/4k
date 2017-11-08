@@ -4,7 +4,7 @@ if (!isNode) {
   g.global = g
 }
 const isFn = fn => typeof fn === 'function'
-const isArr = Array.isArray || (arr => arr && arr.constructor === Array)
+const isArr = Array.isArray
 const isDef = val => val !== undefined
 const isNum = num => typeof num === 'number' && !isNaN(num)
 const isBool = b => b === true || b === false
@@ -25,11 +25,7 @@ const thisIsLast = fn => function () {
   let i = arguments.length - 1
   if (i < 1) return fn.apply(arguments[0])
   const last = arguments[i]
-  while (i) {
-    arguments[i] = arguments[--i]
-  }
   arguments.length--
-
   return fn.apply(last, arguments)
 }
 
@@ -108,14 +104,14 @@ const curry = (fn, ary) => {
   return function _fn() { return curryfier(arguments, _fn) }
 }
 
-const metaProxy = (maker, s=Object.create(null)) => new Proxy(s, {
+const lazyProxy = (maker, s=Object.create(null)) => new Proxy(s, {
   get: (src, key) => src[key] || (src[key] = maker(key, src)),
 })
 
 const functify = (method, ary = method.length + 1) =>
   curry(thisIsLast(method), ary)
 
-const proto = metaProxy(type => metaProxy(methodKey =>
+const proto = lazyProxy(type => lazyProxy(methodKey =>
   functify(global[type].prototype[methodKey])))
 
 const objectPromiseAll = (obj, store) => {
@@ -160,6 +156,7 @@ const c = fns => {
 
 
 const pipe = curry((fns, arg) => {
+  let i = -1
   while (++i < fns.length) { arg = fns[i](arg) }
   return arg
 })
@@ -175,15 +172,20 @@ hold.both = curry((fn, a) => passBoth(fn(a), a))
 hold.get = (p, ...fns) => hold(pipe(path(p), fns))
 hold.map = curry((fn1, fn2, a) => passBoth(fn1(a), fn2(a)))
 const fold = functify(Array.prototype.reduce, 3)
+const map = proto.Array.map
 functify.proto = type => (methodKey, ary) =>
   functify(type.prototype[methodKey], ary)
 
-module.exports = Object.assign(c, {
+module.exports = lazyProxy(moduleKey => {
+  const { promisify } = require('util')
+  const mod = require(moduleKey)
+  return lazyProxy(key => mod[key][promisify.custom] = promisify(mod[key]))
+}, Object.assign(c, {
   c, // sync and asnyc + error handling, aka "Ceci n'est pas une pipe"
   pipe, // simplest, 0 overhead, sync only
   fast: ((_body, _args) => fns => // fastest pipe, small overhead with eval, no curry
     Function(_args(fns), `return x => ${_body(fns)}`)(...fns))
-  (fold((x, f, i) => `f${i}(${x})`, 'x'), proto.Array.map((f, i) => `f${i}`)),
+  (fold((x, f, i) => `f${i}(${x})`, 'x'), map((f, i) => `f${i}`)),
   // Isomorphic Promise.all
   all:  trace(collection => {
     if (!collection) return Promise.resolve(collection)
@@ -198,13 +200,14 @@ module.exports = Object.assign(c, {
     const opts = options((key, src) => target => get(src(target), key))
     return new Proxy({}, options(key => target => get(target, key)))
   })((src, key) => src && src[key]),
-  map: proto.Array.map,
+  map,
   sort: proto.Array.sort,
   filter: proto.Array.filter,
   reduce: proto.Array.reduce, // reduce only take 1 arguments, will fail on empty array
   fold, // Use fold to reduce with initial value, works with empty arrays
   noOp,
   hold,
+  curry,
   proto, // lazy proxy to get a functified function (see functify)
   trace, // usefull for clutterless errors (skip internals stack trace)
   fmemo, // stupid simple memozation for f -> f
@@ -212,6 +215,7 @@ module.exports = Object.assign(c, {
   functify, // allow to use a method as a currified function
             // the this argument will be the last parameter
   // call the given function with this as first argument
+  lazyProxy, // Use proxy for lazy programming
   this: fmemo(fn => function () {
     let i = arguments.length
     while (i) {
@@ -221,13 +225,13 @@ module.exports = Object.assign(c, {
     arguments.length++
     return fn.apply(null, arguments)
   }),
-  catch: f => ({ [_F]: f }),
+  catch: fmemo(f => ({ [_F]: f })),
   then: (s, f) => ({ [_S]: s, [_F]: f }),
   exec: (key, ...args) => (el, ...rest) => el[key](...args, ...rest),
   join: (...args) => args,
   return: a => () => a,
   spread: fmemo(fn => (...args) => fn(...flatten(args))),
-  spreadMap: fmemo(fn => map((...args) => fn(...flatten(args)))),
+  spreadMap: fmemo(fn => map((val, i, arr) => fn(...val, i, arr))),
   lazy: fmemo(fn => val => () => fn(val)),
   cook: (fn, ...args) => (...rest) => fn(...args, ...rest),
   delay: n => val => new Promise(s => setTimeout(() => s(val), n)),
@@ -245,4 +249,4 @@ module.exports = Object.assign(c, {
   isUndef,
   isThenable,
   isPrimitive,
-})
+}))

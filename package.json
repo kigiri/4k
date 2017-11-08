@@ -16,5 +16,8 @@
   "bugs": {
     "url": "https://github.com/kigiri/4k/issues"
   },
-  "homepage": "https://github.com/kigiri/4k#readme"
+  "homepage": "https://github.com/kigiri/4k#readme",
+  "devDependencies": {
+    "tape": "^4.8.0"
+  }
 }

@@ -4,7 +4,8 @@
   "description": "JavaScript Ultra High Definition",
   "main": "4k.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test | node_modules/.bin/tap-difflet",
+    "tap": "node test"
   },
   "keywords": [],
   "author": "kigiri",
@@ -18,6 +19,7 @@
   },
   "homepage": "https://github.com/kigiri/4k#readme",
   "devDependencies": {
+    "tap-difflet": "^0.7.0",
     "tape": "^4.8.0"
   }
 }

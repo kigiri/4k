@@ -83,25 +83,32 @@ const mergeArgs = (a, b) => {
   return args
 }
 
-const fmemo = maker => {
-  const S = Symbol()
-  return fn => fn[S] || (fn[S] = maker(fn))
+const fmemo = (maker, S = Symbol()) => fn => fn[S] || (fn[S] = maker(fn))
+
+function curryfier(ary, fn, args, traceSource) {
+  if (args.length >= ary) {
+    try { return fn.apply(null, args) }
+    catch (err) {
+      Error.captureStackTrace(err, traceSource)
+      throw err
+    }
+  }
+  return function _cu() {
+    arguments.length || (arguments.length = 1) // empty calls skip next argument
+    return curryfier(ary, fn, mergeArgs(args, arguments), _cu)
+  }
 }
 
+const symbols = Object.create(null)
+Array(18).fill().forEach((_,i) => symbols[i + 2] = Symbol(`@@curry${i+2}`))
 const curry = (fn, ary) => {
   ary || (ary = fn.length)
   if (ary === 1) return fn
-  function curryfier(args, traceSource) {
-    if (args.length >= ary) {
-      try { return fn.apply(null, args) }
-      catch (err) {
-        Error.captureStackTrace(err, traceSource)
-        throw err
-      }
-    }
-    return function _cu() { return curryfier(mergeArgs(args, arguments), _cu) }
-  }
-  return function _fn() { return curryfier(arguments, _fn) }
+  const __s = symbols[ary]
+  return fn[__s] || (fn[__s] = function _fn() {
+    arguments.length || (arguments.length = 1)
+    return curryfier(ary, fn, arguments, _fn)
+  })
 }
 
 const lazyProxy = (maker, s=Object.create(null)) => new Proxy(s, {
@@ -111,27 +118,37 @@ const lazyProxy = (maker, s=Object.create(null)) => new Proxy(s, {
 const functify = (method, ary = method.length + 1) =>
   curry(thisIsLast(method), ary)
 
-const proto = lazyProxy(type => lazyProxy(methodKey =>
-  functify(global[type].prototype[methodKey])))
+functify.proto = type => (methodKey, ary) =>
+  functify(type.prototype[methodKey], ary)
 
-const objectPromiseAll = (obj, store) => {
-  const keys = Object.keys(obj)
-  const work = Array(keys.length)
+const proto = lazyProxy(type => lazyProxy(methodKey => global[type][methodKey]
+  ? curry(global[type][methodKey])
+  : functify(global[type].prototype[methodKey])))
+const toArr = (obj, keys = Object.keys(obj)) => {
+  const result = Array(keys.length)
   let i = -1
 
   while (++i < keys.length) {
-    work[i] = obj[keys[i]]
+    result[i] = obj[keys[i]]
   }
 
-  return Promise.all(work).then(result => {
-    i = -1
+  return result
+}
 
-    while (++i < keys.length) {
-      store[keys[i]] = result[i]
-    }
+const fromKeys = (keys, result, store = {}) => {
+  let i = -1
 
-    return store
-  })
+  while (++i < keys.length) {
+    store[keys[i]] = result[i]
+  }
+
+  return store
+}
+
+const objectPromiseAll = (obj, store) => {
+  const keys = Object.keys(obj)
+  return Promise.all(toArr(obj, keys))
+    .then(result => fromKeys(keys, result, store))
 }
 
 const _S = Symbol('@@Success')
@@ -173,13 +190,27 @@ hold.get = (p, ...fns) => hold(pipe(path(p), fns))
 hold.map = curry((fn1, fn2, a) => passBoth(fn1(a), fn2(a)))
 const fold = functify(Array.prototype.reduce, 3)
 const map = proto.Array.map
-functify.proto = type => (methodKey, ary) =>
-  functify(type.prototype[methodKey], ary)
+
+let promisify
+if (isNode) {
+  const util = require('util')
+  promisify = fmemo(util.promisify, util.promisify.custom)
+} else {
+  promisify = fmemo(fn => (...args) => new Promise((s,f) => fn(...args, (err, ...data) => {
+    if (err) return f(err)
+    return data.length > 1 ? s(data) : s(data[0])
+  })))
+}
+const prototypes = 'Array.Number.String.Boolean.Object'
+  .split('.')
+  .forEach(key => c[key.slice(0,3).toLowerCase()] = c[key] = proto[key])
+
+c.obj.fromKeys = fromKeys
+c.obj.toArr = toArr
 
 module.exports = lazyProxy(moduleKey => {
-  const { promisify } = require('util')
   const mod = require(moduleKey)
-  return lazyProxy(key => mod[key][promisify.custom] = promisify(mod[key]))
+  return lazyProxy(key => promisify(mod[key]))
 }, Object.assign(c, {
   c, // sync and asnyc + error handling, aka "Ceci n'est pas une pipe"
   pipe, // simplest, 0 overhead, sync only

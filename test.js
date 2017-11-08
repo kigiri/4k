@@ -20,6 +20,8 @@ test('curry', [
   t => t.equal(add4(10), add(4, 10), 'curry successive call'),
   t => t.equal(subN2(3, 1), 3 - 1, 'curry with ary 2'),
   t => t.equal(subN3(3, 1, 1), 3 - 1 - 1, 'curry with ary 3'),
+  t => t.equal(subN2, c.curry(subDefaults, 2),
+    'curry successive times a function should return the same function'),
 ])
 
 const { promisify } = require('util')
@@ -39,6 +41,18 @@ test('proto proxy', [
 
   t => t.equal(c.proto.String.indexOf('a')(strA), strA.indexOf('a'),
     'calling a method with 1 argument as a curryfied function'),
+
+  t => t.deepEqual(c.proto.String.split('.', 1)(strA), strA.split('.', 1),
+    'calling a method with 2 argument as a function'),
+
+  t => t.deepEqual(c.proto.String.split('.')(1)(strA), strA.split('.', 1),
+    'calling a method with 2 argument as a curryfied function'),
+
+  t => t.deepEqual(c.proto.String.split('.')()(strA), strA.split('.'),
+    'empty calls should skip one argument'),
+
+  t => t.deepEqual(c.proto.String.split()()(strA), strA.split(),
+    'empty 2 calls should skip 2 arguments'),
 ])
 
 test('compose pipe', [
@@ -80,4 +94,12 @@ test('compose c - catch', [
 
   t => c([ () => Promise.reject(Error('pouet')), c.catch(err => err.message) ])(strA)
     .then(value => t.equal(value, 'pouet', 'catch asynchronous errors')),
+])
+
+test('all', [
+  t => c.all({ a: 1, b: Promise.resolve(2), c: Promise.resolve(3) })
+    .then(value => t.deepEqual(value, { a: 1, b: 2, c: 3 }), 'resolve mixed object'),
+
+  t => c.all([ 1, Promise.resolve(2), Promise.resolve(3) ])
+    .then(value => t.deepEqual(value, [ 1, 2, 3 ]), 'resolve arrays'),
 ])

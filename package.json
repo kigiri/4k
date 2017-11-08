@@ -1,0 +1,20 @@
+{
+  "name": "4k",
+  "version": "0.0.1",
+  "description": "JavaScript Ultra High Definition",
+  "main": "4k.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "kigiri",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kigiri/4k.git"
+  },
+  "bugs": {
+    "url": "https://github.com/kigiri/4k/issues"
+  },
+  "homepage": "https://github.com/kigiri/4k#readme"
+}

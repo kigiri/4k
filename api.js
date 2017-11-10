@@ -1,18 +1,22 @@
 const { lazyProxy, isFn } = require('./4k')
 const request = require('./request')
-const methods = new Set(Object.keys(request.extend([])))
+const methods = Object.create(null)
+
+Object.keys(request.extend([]))
+  .forEach(method => methods[method] = request.setOpt('method', method.toUpperCase()))
 
 module.exports = api => {
   isFn(api) || (api = request.use(api))
 
   const next = (basePath, path) => {
-    const valid = methods.has(path)
-    const fn = request.extendWithoutMethods([
-      api,
-      valid && request.setOpt('method', path.toUpperCase()),
-      request.setOpt('path', valid ? basePath : `${basePath}/${path}`),
-    ].filter(Boolean))
-    return lazyProxy(key => next(`${basePath}/${path}`, key), fn)
+    const setMethod = methods[path]
+    return lazyProxy(key => next(`${basePath}/${path}`, key), setMethod
+      ? request.extendWithoutMethods([
+          api,
+          setMethod,
+          request.setOpt('path', basePath),
+        ])
+      : {})
   }
   return lazyProxy(key => next('', key))
 }

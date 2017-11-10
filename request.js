@@ -8,7 +8,9 @@ const c = require('4k')
 const parseUrlInto = (url, opts) => {
   const parsed = parseUrl(url)
   opts.path = parsed.path
-  opts.host = parsed.host
+  opts.host = undefined
+  opts.hostname = parsed.hostname
+  opts.port = parsed.port
   opts.protocol = parsed.protocol || 'https:'
   return opts
 }
@@ -38,13 +40,25 @@ function endRequest() {
 }
 
 function handle(response) {
-  const { s, f, assert, responseEncoding, getResponse } = this[_E]
+  const { s, f, assert, responseEncoding, getResponse, noRedirect } = this[_E]
+
+  if (!noRedirect && response.statusCode === 302) {
+    const cookies = response.headers['Set-Cookie']
+    cookies && (this[_E].headers.cookie = cookies)
+    return execRequest(parseUrlInto(response.headers.location, this[_E]), s, f)
+  }
+
   const contentType = getContentType(response.headers)
   const encoding = responseEncoding
     || contentType.split(CHARTSET_RE)[1]
     || 'ascii'
 
-  if (!assert(response)) return f(errors[response.statusCode])
+
+  if (!assert(response)) {
+    const error = errors.boom[response.statusCode]()
+    error.res = response
+    return f(error)
+  }
   response[_E] = {
     isBinary: encoding === 'binary',
     toJSON: contentType.includes('application/json'),
@@ -56,15 +70,22 @@ function handle(response) {
   response.on('data', storeBody).on('error', f).on('end', endRequest)
 }
 
-const request = ((_opts, executor = (s, f) => {
-  const opts = _opts
-  _opts = undefined
-  // console.log(opts)
+const log = opts => {
+  console.log('<', opts.method, `${opts.protocol}//${opts.host}${opts.path}`)
+  opts.body && console.log('  -> ', opts.body)
+}
+
+const execRequest = (opts, s, f) => {
+  // log(opts)
   const req = (opts.protocol === 'http:' ? http : https).request(opts, handle)
   req[_E] = (opts.s = s, opts.f = f, opts)
+  req.setNoDelay(!opts.withDelay)
   req.on('error', f)
   req.end(opts.body)
-}) => opts => (_opts = opts, new Promise(executor)))()
+}
+
+const request = ((_op, executor = (s, f) => _op = execRequest(_op, s, f)) =>
+    opts => (_op = opts, new Promise(executor)))()
 
 const status200 = res => res.statusCode === 200
 const buildOpts = (opts = {}) => {

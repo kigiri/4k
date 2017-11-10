@@ -78,9 +78,11 @@ const sendAnswerValue = (res, value, info) => {
 
 const prepareRoute = (route, session) => {
   let { params } = route
+
   if (session && !route.noSession) {
-    (params || (params = {})).session = (_, { req }) =>
-      session.get(cookie.parse(req.headers.cookie || ''), req)
+    params || (params = route.params = {})
+    params.session = (_, { req }) =>
+      session.get(cookie.parse(req.headers.cookie || '')[session.key], req)
   }
   if (params) {
     route.parse = c.fast(Object.keys(params)
@@ -88,11 +90,12 @@ const prepareRoute = (route, session) => {
     route.bodyOpts || (route.bodyOpts = {})
   }
 }
-const sessionDefaults = { key: '4k', httpOnly: true, maxAge: 60 * 60 * 24 * 7 }
+const sessionDefaults = { httpOnly: true, maxAge: 60 * 60 * 24 * 7 }
 module.exports = ({ routes, domain, allowOrigin, session }) => {
-  session && session.options
-    ? c.defaults(session.options, sessionDefaults)
-    : session.options = sessionDefaults
+  if (session) {
+    c.defaults(session, { key: '4k', options: {} })
+    c.defaults(session.options, sessionDefaults)
+  }
 
   const addOauthRoute = route => {
     const { authorizeUrl, serviceName, accessUrl, setState, handler, opts } = route
@@ -105,22 +108,30 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
     const getUrl = Object.assign(parseUrl(accessUrl), {
       headers: { 'Content-Type': 'application/json', 'User-Agent': 'NaN-App' },
       method: 'POST',
+      body: { client_secret, client_id, scope },
     })
 
+    const endRequest = (res, value) => {
+      res.setHeader('Set-Cookie',
+        cookie.serialize(session.key, value, session.options))
+
+      session.redirect
+        ? handleRedirect(session.redirect, res)
+        : res.end('"OK"')
+    }
+
     routes.GET[`/auth/${serviceName}`] = { handler: () => redirect, noSession: true }
-    routes.GET[`/auth/${serviceName}/callback/`] = {
+    routes.GET[`/auth/${serviceName}/callback`] = {
       params: { code: String, state: String },
       noSession: true,
       handler: ({ code, state, req }) => code
-        ? request(getUrl, { client_secret, client_id, state, scope, code })
+        ? request((getUrl.body.state = state, getUrl.body.code = code, getUrl))
           .then(body => {
-            const value = handler(Object.assign(parseQuery(body), { state, req }))
-            if (!session) return value
-            return res => {
-              res.setHeader('Set-Cookie',
-                cookie.serialize(session.key, value, session.options))
-              goToLocation(session.redirect, res)
-            }
+            const ret = handler(Object.assign(parseQuery(body), { state, req }))
+            if (!session) return ret
+            return res => isThennable(ret)
+              ? ret.then(value => endRequest(res, value))
+              : endRequest(res, ret)
           })
         : Error('missing oauth code'),
     }
@@ -134,10 +145,14 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
 
   Object.keys(routes).forEach(methodKey =>
     methodKey !== 'OAUTH' && Object.keys(routes[methodKey])
-      .forEach(routeKey => prepareRoute(routes[methodKey][routeKey], session)))
+      .forEach(routeKey => {
+        prepareRoute(routes[methodKey][routeKey], session)
+        routes[methodKey][routeKey.endsWith('/')
+          ? routeKey.slice(0, -1)
+          : `${routeKey}/`] = routes[methodKey][routeKey]
+      }))
 
   const setHeaderAndAnswer = (res, value, info) => {
-    // console.log({ res, value, info })
     res.setHeader('Content-Type', 'application/json')
     res.setHeader('Access-Control-Allow-Origin', allowOrigin)
     return sendAnswerValue(res, value, info)
@@ -164,9 +179,10 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
 
   return (req, res) => {
     const methods = routes[req.method]
-    if (!methods) return setHeaderAndAnswer(res, _404)
     const { pathname, query } = parseUrl(req.url)
-    const route = methods[pathname] || methods[pathname + '/']
+    // console.log(' >'+ req.method, pathname)
+    if (!methods) return setHeaderAndAnswer(res, _404)
+    const route = methods[pathname]
     if (!route) return setHeaderAndAnswer(res, _404)
     if (!route.params) return sendAnswer(res, route.handler({ req }))
     if (req.method === 'GET') return parseRawParams(req, res, route, parseQuery(query))

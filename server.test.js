@@ -85,22 +85,22 @@ const localhost = api({
 })
 
 test('server should handle return 404 on unserved path', [
-  t => localhost.noroute.get()
+  t => localhost.get.noroute()
     .then(t.fail, err => t.equal(err.statusCode, 404, 'correct statusCode')),
 ])
 
 test('server should handle GET on /pouet', [
-  t => localhost.pouet.get()
+  t => localhost.get.pouet()
     .then(() => t.pass('Request success'), err =>
       console.log(err) || t.fail('woops')),
 ])
 
 test('server should handle POST on /papa', [
-  t => localhost.papa.post({ body: { a: 4, b: 'lol' } })
+  t => localhost.post.papa({ body: { a: 4, b: 'lol' } })
     .then(data =>
       t.deepEqual(data, { a: 4, b: 'lol' }, 'should return posted data'), t.fail),
 
-  t => localhost.papa.post()
+  t => localhost.post.papa()
     .then(() => t.fail('Should have fail'), err =>
       t.equal(err.statusCode, 415, 'empty post should fail with 415')),
 ])
@@ -110,21 +110,21 @@ test('OAuth', [
   //   body: {
   //   }
   // }).then(console.log, console.dir),,
-  t => localhost.auth.test.get({
+  t => localhost.get.auth.test({
     assert: 302,
     noRedirect: true,
     getResponse: true,
   }).then(res => t.assert(res.headers.location
       .startsWith('http://localhost:2000/login/oauth/authorize'),
     'should redirect to authorizeUrl'), t.fail),
-  t => localhost.auth.test.get()
+  t => localhost.get.auth.test()
     .then(params => t.deepEqual(params, {
       redirect_uri: 'localhost/auth/test/callback',
       client_id: 'someId',
       scope: 'someScope',
       state: 'someState',
     }, 'should obtain expected params after redirect'), err => console.dir(err)),
-  t => localhost.auth.test.callback.get({
+  t => localhost.get.auth.test.callback({
     body: { state: 'someState' },
     headers: { cookie: '4k=someSessionId; Max-Age=604800; HttpOnly' },
   }).then(session => t.equal(session, '6666', 'should return expected session'))

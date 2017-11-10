@@ -8,15 +8,12 @@ Object.keys(request.extend([]))
 module.exports = api => {
   isFn(api) || (api = request.use(api))
 
-  const next = (basePath, path) => {
-    const setMethod = methods[path]
-    return lazyProxy(key => next(`${basePath}/${path}`, key), setMethod
-      ? request.extendWithoutMethods([
-          api,
-          setMethod,
-          request.setOpt('path', basePath),
-        ])
-      : {})
-  }
-  return lazyProxy(key => next('', key))
+  const next = (path, method) => lazyProxy(key => next(`${path}/${key}`, method),
+    request.extendWithoutMethods([
+      api,
+      method,
+      request.setOpt('path', path),
+    ]))
+
+  return lazyProxy(method => next('', methods[method]))
 }

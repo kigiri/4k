@@ -90,7 +90,7 @@ const prepareRoute = (route, session) => {
     route.bodyOpts || (route.bodyOpts = {})
   }
 }
-const sessionDefaults = { httpOnly: true, maxAge: 60 * 60 * 24 * 7 }
+const sessionDefaults = { httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 7 }
 module.exports = ({ routes, domain, allowOrigin, session }) => {
   if (session) {
     c.defaults(session, { key: '4k', options: {} })
@@ -131,6 +131,7 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
             if (!session) return ret
             return res => isThennable(ret)
               ? ret.then(value => endRequest(res, value))
+                .catch(err => setHeaderAndAnswer(res, err, body))
               : endRequest(res, ret)
           })
         : Error('missing oauth code'),

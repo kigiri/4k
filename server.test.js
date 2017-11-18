@@ -14,26 +14,25 @@ test('server should start', [
           authorizeUrl: 'http://localhost:2000/login/oauth/authorize',
           accessUrl: 'http://localhost:2000/login/oauth/access_token',
           setState: () => Promise.resolve(STATE),
-          handler: ({ access_token, scope, token_type, state, req }) => {
-            // do whatever we want with the token here
-            // then we return the session ID
-            return Promise.resolve('someSessionId')
-          },
+          handler: ({ error, access_token, scope, token_type, state, req }) =>
+            error
+              ? Promise.reject(Error(error.message))
+              : Promise.resolve('someSessionId'),
           opts: {
-            client_id: 'someId',
             client_secret: 'someSecret',
+            client_id: 'someId',
             scope: 'someScope',
           },
         },
       },
       GET: {
         '/pouet': {
-          // noSession: true,
+          noSession: true,
           params: { a: Number, b: String },
           handler: ({ a, b }) => ({ a, b }),
         },
         '/login/oauth/authorize': {
-          // noSession: true,
+          noSession: true,
           params: {
             redirect_uri: String,
             client_id: String,
@@ -71,9 +70,7 @@ test('server should start', [
     allowOrigin: '*',
     session: {
       redirect: 'http://localhost:2000/end',
-      get: cookie =>
-      console.log('has cookie', cookie) ||
-        Promise.resolve('6666'),
+      get: cookie => Promise.resolve('6666'),
     },
   })).listen(2000, () => t.pass('server is up on port 2000'))
 ])
@@ -91,8 +88,7 @@ test('server should handle return 404 on unserved path', [
 
 test('server should handle GET on /pouet', [
   t => localhost.get.pouet()
-    .then(() => t.pass('Request success'), err =>
-      console.log(err) || t.fail('woops')),
+    .then(() => t.pass('Request success'), t.fail),
 ])
 
 test('server should handle POST on /papa', [
@@ -106,10 +102,6 @@ test('server should handle POST on /papa', [
 ])
 
 test('OAuth', [
-  // t => localhost.login.oauth.authorize.get({
-  //   body: {
-  //   }
-  // }).then(console.log, console.dir),,
   t => localhost.get.auth.test({
     assert: 302,
     noRedirect: true,
@@ -123,7 +115,7 @@ test('OAuth', [
       client_id: 'someId',
       scope: 'someScope',
       state: 'someState',
-    }, 'should obtain expected params after redirect'), err => console.dir(err)),
+    }, 'should obtain expected params after redirect'), t.fail),
   t => localhost.get.auth.test.callback({
     body: { state: 'someState' },
     headers: { cookie: '4k=someSessionId; Max-Age=604800; HttpOnly' },

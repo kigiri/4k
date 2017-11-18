@@ -65,20 +65,35 @@ test('4k fold', [
   t => t.equal(c.fold((a, b) => a + b)(0, [ 1, 2, 3, 4]), 10),
   t => t.equal(c.fold((a, b) => a + b, 0)([ 1, 2, 3, 4]), 10),
   t => t.equal(c.fold((a, b) => a + b)(0)([ 1, 2, 3, 4]), 10),
-  t => t.equal(c.fold.index((a, b) => a + b, 0, [ 1, 2, 3, 4]), 10),
-  t => t.equal(c.fold.index((a, b) => a + b)(0, [ 1, 2, 3, 4]), 10),
-  t => t.equal(c.fold.index((a, b) => a + b, 0)([ 1, 2, 3, 4]), 10),
-  t => t.equal(c.fold.index((a, b) => a + b)(0)([ 1, 2, 3, 4]), 10),
+  t => t.equal(c.fold.Array((a, b) => a + b, 0, [ 1, 2, 3, 4]), 10),
+  t => t.equal(c.fold.Array((a, b) => a + b)(0, [ 1, 2, 3, 4]), 10),
+  t => t.equal(c.fold.Array((a, b) => a + b, 0)([ 1, 2, 3, 4]), 10),
+  t => t.equal(c.fold.Array((a, b) => a + b)(0)([ 1, 2, 3, 4]), 10),
   t => t.equal(c.fold((x, f, i) => `f${i}(${x})`, 'x', [ 1, 2, 3, 4 ]), 'f3(f2(f1(f0(x))))')
 ])
 
 test('4k map', [
   t => t.deepEqual(c.map((f, i) => `f${i}`, [ 1, 2, 3, 4 ]), [ 'f0', 'f1', 'f2', 'f3' ]),
-  t => t.deepEqual(c.map.index((f, i) => `f${i}`, [ 1, 2, 3, 4 ]), [ 'f0', 'f1', 'f2', 'f3' ]),
+  t => t.deepEqual(c.map.Array((f, i) => `f${i}`, [ 1, 2, 3, 4 ]), [ 'f0', 'f1', 'f2', 'f3' ]),
 ])
 
+const defaultValues = { a: 1, b: { c: 2, d: { e: 5 } } }
 test('4k defaults', [
-  t => t.deepEqual(c.defaults({ a: 3 }, { a: 1, b: 5 }), { a: 3, b: 5 }),
+  t => t.deepEqual(c.defaults({ a: 4 }, defaultValues),
+    { a: 4, b: { c: 2, d: { e: 5 } } }, 'Should copy values without overriding'),
+  t => t.equal(c.defaults({ a: 4 }, defaultValues).b,
+    defaultValues.b, 'Shallow copied object should share ref'),
+])
+
+test('4k defaults.deep', [
+  t => t.deepEqual(c.defaults.deep({ a: 4 }, defaultValues),
+    { a: 4, b: { c: 2, d: { e: 5 } } }, 'Should copy values without overriding'),
+  t => t.notEqual(c.defaults.deep({ a: 4 }, defaultValues).b,
+    defaultValues.b, 'Deep copied object should not share ref'),
+  t => t.notEqual(c.defaults.deep({ a: 4 }, defaultValues).b.d,
+    defaultValues.b.d, 'Copied nested object should not share ref'),
+  t => t.deepEqual(c.defaults.deep({ a: 4, b: { d: { f: 6 } } },
+    defaultValues).b.d, { e: 5, f: 6 }, 'Should preserve nested values'),
 ])
 
 test('4k compose fast (eval)', [

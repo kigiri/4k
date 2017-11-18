@@ -66,7 +66,7 @@ const sendAnswerValue = (res, value, info) => {
     return res.end(JSON.stringify({
       message: value.message,
       stack: value.stack,
-      info,
+      info: info || value.info,
     }))
   }
   try { res.end(JSON.stringify(value)) }
@@ -108,7 +108,6 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
     const getUrl = Object.assign(parseUrl(accessUrl), {
       headers: { 'Content-Type': 'application/json', 'User-Agent': 'NaN-App' },
       method: 'POST',
-      body: { client_secret, client_id, scope },
     })
 
     const endRequest = (res, value) => {
@@ -125,8 +124,10 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
       params: { code: String, state: String },
       noSession: true,
       handler: ({ code, state, req }) => code
-        ? request((getUrl.body.state = state, getUrl.body.code = code, getUrl))
-          .then(body => {
+        ? request({
+          ...getUrl,
+          body: { client_secret, client_id, scope, code, state },
+        }).then(body => {
             const ret = handler(Object.assign(parseQuery(body), { state, req }))
             if (!session) return ret
             return res => isThennable(ret)
@@ -156,6 +157,9 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
   const setHeaderAndAnswer = (res, value, info) => {
     res.setHeader('Content-Type', 'application/json')
     res.setHeader('Access-Control-Allow-Origin', allowOrigin)
+    res.setHeader('Access-Control-Allow-Credentials', true)
+    // res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE')
+    // res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With,content-type')
     return sendAnswerValue(res, value, info)
   }
 

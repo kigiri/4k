@@ -6,6 +6,7 @@ if (!isNode) {
 
 // Use objects as HashMap
 const H = () => Object.create(null)
+H.from = props => Object.assign(H(), props)
 const id = x => x
 const noOp = () => {}
 
@@ -124,9 +125,9 @@ const curry = (symbols => (fn, ary) => {
 })(Array(9).fill().reduce((s, _, i) => (s[i + 2] = Symbol(`@@${i+2}`), s), H()))
 
 const lazyProxy = (maker, s=H()) => new Proxy(s, {
-  get: (src, key) => key in src
+  get: trace((src, key) => key in src
     ? src[key]
-    : (src[key] = isStr(key) ? maker(key, src) : undefined), // ignore Symbols
+    : (src[key] = isStr(key) ? maker(key, src) : undefined)), // ignore Symbols
 })
 
 const functify = (method, ary = method && method.length + 1) =>
@@ -168,6 +169,16 @@ proto.Object.forEach = curry((fn, obj) => {
   for (let key of keys) fn(key, obj[key])
   return obj
 })
+
+const constructorName = val => {
+  if (!val) return ''
+  switch (val.constructor) {
+    case undefined:
+    case null: return 'Object'
+    default: return val.constructor.name
+  }
+}
+
 const match = (actions, getter = id) => {
   const patterns = H()
   const matcher = curry(function () {
@@ -183,53 +194,43 @@ const match = (actions, getter = id) => {
   return matcher
 }
 
-const iteratorType = val => {
-  if (!val) return val
-  switch (val.constructor) {
-    case String:
-    case Array: return 'index'
-    case Set: return 'set'
-    case Map: return 'map'
-    default: return 'keys'
-  }
-}
-
-const fold = match({
-  set: proto.Set.fold = curry((fn, acc, s) => {
+const copyArrayToString = obj => (obj.String = obj.Array, obj)
+const fold = match(copyArrayToString({
+  Set: proto.Set.fold = curry((fn, acc, s) => {
     for (let val of s) acc = fn(acc, val, s)
     return acc
   }),
-  map: proto.Map.fold = curry((fn, acc, m) => {
+  Map: proto.Map.fold = curry((fn, acc, m) => {
     for (let [ key, val ] of m) acc = fn(acc, val, key, s)
     return acc
   }),
-  keys: proto.Object.fold = curry((fn, acc, obj) => {
+  Object: proto.Object.fold = curry((fn, acc, obj) => {
     const keys = Object.keys(obj)
     for (let key of keys) acc = fn(acc, obj[key], key, obj)
     return acc
   }),
-  index: proto.Array.fold = functify(Array.prototype.reduce, 3),
-}, (fn, acc, collection) => iteratorType(collection))
+  Array: proto.Array.fold = functify(Array.prototype.reduce, 3),
+}), (fn, acc, collection) => constructorName(collection))
 
-const map = match({
-  set: proto.Set.map = curry((fn, s) => {
+const map = match(copyArrayToString({
+  Set: proto.Set.map = curry((fn, s) => {
     const result = new Set
     for (let val of s) result.add(fn(val, s))
     return result
   }),
-  map: proto.Map.map = curry((fn, m) => {
+  Map: proto.Map.map = curry((fn, m) => {
     const result = new Map
     for (let [ key, val ] of m) result.set(key, fn(val, key, s))
     return result
   }),
-  keys: proto.Object.map = curry((fn, obj) => {
+  Object: proto.Object.map = curry((fn, obj) => {
     const keys = Object.keys(obj)
     const result = {}
     for (let key of keys) result[key] = fn(obj[key], key, obj)
     return result
   }),
-  index: proto.Array.map,
-}, (fn, collection) => iteratorType(collection))
+  Array: proto.Array.map,
+}), (fn, collection) => constructorName(collection))
 
 const buildChain = (prev, next) => typeof next === 'function'
   ? arg => {
@@ -281,6 +282,32 @@ const prototypes = 'Array.Number.String.Boolean.Object'
   .forEach(key => c[key.slice(0,3).toLowerCase()] = c[key] = proto[key])
 
 c.obj.fromKeys = fromKeys
+const copy = (actions => val =>
+  (actions[constructorName(val)] || actions.defaults)(val))(H.from({
+  Set: val => new Set(val),
+  Map: val => new Map(val),
+  Array: val => val.map(copy),
+  Object: val => map.Object(copy, val),
+  defaults: id,
+}))
+
+const defaults = fold.Object((acc, val, key) =>
+  (isUndef(acc[key]) && (acc[key] = val), acc))
+
+defaults.deep = fold.Object((acc, val, key) => {
+  if (!acc[key]) {
+    acc[key] = copy(val)
+  } else if (isObj(acc[key])) {
+    defaults.deep(acc[key], val)
+  }
+  return acc
+})
+const throwMessage = message => {
+  const err = Error(message)
+  Error.captureStackTrace(err, throwMessage)
+  throw err
+}
+
 module.exports = lazyProxy(moduleKey => {
   try {
     const mod = require(moduleKey)
@@ -291,7 +318,7 @@ module.exports = lazyProxy(moduleKey => {
   pipe, // simplest, 0 overhead, sync only
   fast: ((_args, _body) => fns => // fastest pipe, small overhead with eval, no curry
     Function(_args(fns), `return x => ${_body(fns)}`)(...fns))
-  (map.index((f, i) => `f${i}`), fold.index((x, f, i) => `f${i}(${x})`, 'x')),
+  (map.Array((f, i) => `f${i}`), fold.Array((x, f, i) => `f${i}(${x})`, 'x')),
   // Isomorphic Promise.all
   all:  trace(collection => {
     if (!collection) return Promise.resolve(collection)
@@ -304,7 +331,6 @@ module.exports = lazyProxy(moduleKey => {
   H, // Object.create(null) alias
   map,
   fold, // Use fold to reduce with initial value, works with empty arrays
-  defaults: fold.keys((acc, val, key) => (isUndef(acc[key]) && (acc[key] = val), acc)),
   sort: proto.Array.sort,
   filter: proto.Array.filter,
   reduce: proto.Array.reduce, // reduce only take 1 arguments, will fail on empty array
@@ -314,6 +340,7 @@ module.exports = lazyProxy(moduleKey => {
   trace, // usefull for clutterless errors (skip internals stack trace)
   fmemo, // stupid simple memozation for f -> f
   flatten, // recursive array flatten, copy only if needed
+  defaults, // like assign but preserve target values
   functify, // allow to use a method as a currified function
             // the this argument will be the last parameter
   // call the given function with this as first argument
@@ -344,6 +371,9 @@ module.exports = lazyProxy(moduleKey => {
   _2: fmemo(fn => (a, b) => fn(b)),
   _3: fmemo(fn => (a, b, c) => fn(c)),
   _n: n => (...args) => args[n+1],
+  throw: throwMessage,
+  throwMessage,
+  throwError: err => { throw err },
   isFn,
   isArr,
   isDef,

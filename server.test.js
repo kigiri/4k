@@ -88,9 +88,9 @@ const localhost = api({
   port: 2000,
 })
 
-test('server should return 404 on unserved path', [
-  t => localhost.get.noroute()
-    .then(t.fail, err => t.equal(err.statusCode, 404, 'correct statusCode')),
+test('server should return 400 on invalid parameters', [
+  t => localhost.post.authorized({ body: { b: 5 } })
+    .then(t.fail, err => t.equal(err.statusCode, 400, 'correct statusCode')),
 ])
 
 test('server should return 401 on Unauthorized call', [
@@ -100,9 +100,9 @@ test('server should return 401 on Unauthorized call', [
   }).then(t.fail, err => t.equal(err.statusCode, 401, 'correct statusCode')),
 ])
 
-test('server should return 400 on invalid parameters', [
-  t => localhost.post.authorized({ body: { b: 5 } })
-    .then(t.fail, err => t.equal(err.statusCode, 400, 'correct statusCode')),
+test('server should return 404 on unserved path', [
+  t => localhost.get.noroute()
+    .then(t.fail, err => t.equal(err.statusCode, 404, 'correct statusCode')),
 ])
 
 test('server should handle GET on /pouet', [

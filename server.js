@@ -90,6 +90,9 @@ const prepareRoute = (route, session) => {
     route.bodyOpts || (route.bodyOpts = {})
   }
 }
+
+const getErrorCode = params => params[ERROR].session ? 401 : 400
+
 const sessionDefaults = { httpOnly: true, path: '/', maxAge: 60 * 60 * 24 * 7 }
 module.exports = ({ routes, domain, allowOrigin, session }) => {
   if (session) {
@@ -170,7 +173,7 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
   }
 
   const handleParamErrors = (res, params, handler) => params[ERROR]
-    ? sendAnswer(res, Error('Wrong Parameters'), params[ERROR])
+    ? sendAnswer(res, boom[getErrorCode(params)](), params[ERROR])
     : sendAnswer(res, handler(params))
 
   const parseRawParams = (req, res, route, rawParams) => {

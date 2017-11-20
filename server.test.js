@@ -1,5 +1,6 @@
 const test = require('./tester')
 const server = require('./server')
+const { required } = require('./route-helper')
 const api = require('./api')
 const http = require('http')
 
@@ -47,6 +48,10 @@ test('server should start', [
         },
       },
       POST: {
+        '/authorized': {
+          params: { a: required(Number) },
+          handler: ({ a }) => ({ a }),
+        },
         '/papa': {
           noSession: true,
           params: { a: Number, b: String },
@@ -70,7 +75,9 @@ test('server should start', [
     allowOrigin: '*',
     session: {
       redirect: 'http://localhost:2000/end',
-      get: cookie => Promise.resolve('6666'),
+      get: cookie => cookie === 'fail'
+        ? Promise.reject(Error('fail cookie'))
+        : Promise.resolve('6666'),
     },
   })).listen(2000, () => t.pass('server is up on port 2000'))
 ])
@@ -81,9 +88,21 @@ const localhost = api({
   port: 2000,
 })
 
-test('server should handle return 404 on unserved path', [
+test('server should return 404 on unserved path', [
   t => localhost.get.noroute()
     .then(t.fail, err => t.equal(err.statusCode, 404, 'correct statusCode')),
+])
+
+test('server should return 401 on Unauthorized call', [
+  t => localhost.post.authorized({
+    headers: { cookie: '4k=fail; Max-Age=604800; HttpOnly' },
+    body: { a: 5 },
+  }).then(t.fail, err => t.equal(err.statusCode, 401, 'correct statusCode')),
+])
+
+test('server should return 400 on invalid parameters', [
+  t => localhost.post.authorized({ body: { b: 5 } })
+    .then(t.fail, err => t.equal(err.statusCode, 400, 'correct statusCode')),
 ])
 
 test('server should handle GET on /pouet', [

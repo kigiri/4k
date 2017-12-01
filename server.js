@@ -25,11 +25,11 @@ const getRedirect = (data, setState, authorizeUrl, goToLocation) => {
   }
   const genLocation = (state, res) =>
     goToLocation(formatUrl(authorizeUrl, Object.assign({ state }, data)), res)
-  return res => {
-    const ret = setState(res)
+  return (params) => {
+    const ret = setState(params)
     return isThennable(ret)
-      ? ret.then(state => genLocation(state, res))
-      : genLocation(ret, res)
+      ? ret.then(state => res => genLocation(state, res))
+      : res => genLocation(ret, res)
   }
 }
 
@@ -113,16 +113,19 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
       method: 'POST',
     })
 
-    const endRequest = (res, value) => {
+    const endRequest = (res, value, url) => {
       res.setHeader('Set-Cookie',
         cookie.serialize(session.key, value, session.options))
 
-      session.redirect
-        ? handleRedirect(session.redirect, res)
-        : res.end('"OK"')
+      url ? handleRedirect(url, res) : res.end('"OK"')
     }
 
-    routes.GET[`/auth/${serviceName}`] = { handler: () => redirect, noSession: true }
+    routes.GET[`/auth/${serviceName}`] = {
+      handler: redirect,
+      params: route.params,
+      noSession: true,
+    }
+
     routes.GET[`/auth/${serviceName}/callback`] = {
       params: { code: String, state: String },
       noSession: true,
@@ -134,9 +137,9 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
             const ret = handler(Object.assign(parseQuery(body), { state, req }))
             if (!session) return ret
             return res => isThennable(ret)
-              ? ret.then(value => endRequest(res, value))
+              ? ret.then(r => endRequest(res, r.state, r.url || session.redirect))
                 .catch(err => setHeaderAndAnswer(res, err, body))
-              : endRequest(res, ret)
+              : endRequest(res, ret.state, ret.url || session.redirect)
           })
         : Error('missing oauth code'),
     }

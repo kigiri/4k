@@ -5,6 +5,10 @@ const api = require('./api')
 const http = require('http')
 
 const STATE = 'someState'
+const fakeDB = (db => ({
+  set: (key, val) => Promise.resolve(db[key] = val),
+  get: key => db[key],
+}))({})
 
 let httpServer
 test('server should start', [
@@ -14,11 +18,13 @@ test('server should start', [
         test: {
           authorizeUrl: 'http://localhost:2000/login/oauth/authorize',
           accessUrl: 'http://localhost:2000/login/oauth/access_token',
-          setState: () => Promise.resolve(STATE),
+          params: { redirectTo: String, state: String },
+          setState: ({ redirectTo, state }) =>
+            fakeDB.set(state, redirectTo).then(() => state),
           handler: ({ error, access_token, scope, token_type, state, req }) =>
             error
-              ? Promise.reject(Error(error.message))
-              : Promise.resolve('someSessionId'),
+              ? Promise.reject(error)
+              : Promise.resolve({ state, url: fakeDB.get(state) }),
           opts: {
             client_secret: 'someSecret',
             client_id: 'someId',
@@ -74,10 +80,9 @@ test('server should start', [
     domain: 'localhost',
     allowOrigin: '*',
     session: {
-      redirect: 'http://localhost:2000/end',
       get: cookie => cookie === 'fail'
         ? Promise.reject(Error('fail cookie'))
-        : Promise.resolve('6666'),
+        : Promise.resolve(fakeDB.get(cookie)),
     },
   })).listen(2000, () => t.pass('server is up on port 2000'))
 ])
@@ -128,17 +133,19 @@ test('OAuth', [
   }).then(res => t.assert(res.headers.location
       .startsWith('http://localhost:2000/login/oauth/authorize'),
     'should redirect to authorizeUrl'), t.fail),
-  t => localhost.get.auth.test()
+  t => localhost.get.auth.test({
+    body: { redirectTo: 'http://localhost:2000/end', state: 'someSessionId' },
+  })
     .then(params => t.deepEqual(params, {
       redirect_uri: 'localhost/auth/test/callback',
       client_id: 'someId',
       scope: 'someScope',
-      state: 'someState',
+      state: 'someSessionId',
     }, 'should obtain expected params after redirect'), t.fail),
   t => localhost.get.auth.test.callback({
-    body: { state: 'someState' },
+    body: { state: 'someSessionId' },
     headers: { cookie: '4k=someSessionId; Max-Age=604800; HttpOnly' },
-  }).then(session => t.equal(session, '6666', 'should return expected session'))
+  }).then(redirectTo => t.equal(redirectTo, 'http://localhost:2000/end', 'should return expected redirect url'))
     .catch(t.fail)
 
 ])

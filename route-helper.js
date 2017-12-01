@@ -16,7 +16,6 @@ const required = fn => val => val == undefined
 
 const optional = fn => val => val == undefined ? val : fn(val)
 
-
 module.exports = {
   oneOf,
   between,

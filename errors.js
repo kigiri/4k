@@ -12,6 +12,8 @@ const toJSON = err => (err && err[J]) || safeStringify(err)
 
 const buildError = (err, code) => {
   err.code = code
+  err.stack = err.stack
+  err.message = err.message
   err.statusMessage = STATUS_CODES[code]
   err.statusCode = code
   err[ERROR] = true

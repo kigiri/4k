@@ -76,7 +76,6 @@ const log = opts => {
 }
 
 const execRequest = (opts, s, f) => {
-  // log(opts)
   const req = (opts.protocol === 'http:' ? http : https).request(opts, handle)
   req[_E] = (opts.s = s, opts.f = f, opts)
   req.setNoDelay(!opts.withDelay)

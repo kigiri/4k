@@ -62,7 +62,8 @@ const sendAnswerValue = (res, value, info) => {
   }
   if (value instanceof Error) {
     res.statusCode = value.statusCode || value.code || 500
-    res.statusMessage = value.statusMessage || value.message || _500.message
+    res.statusMessage = (value.statusMessage || value.message || _500.message)
+      .split('\n')[0]
     return res.end(JSON.stringify({
       message: value.message,
       stack: value.stack,
@@ -188,7 +189,7 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
       : handleParamErrors(res, params, route.handler)
   }
 
-  return (req, res) => {
+  const serverHandler = (req, res) => {
     const methods = routes[req.method]
     const { pathname, query } = parseUrl(req.url)
     // console.log(' >'+ req.method, pathname)
@@ -201,4 +202,8 @@ module.exports = ({ routes, domain, allowOrigin, session }) => {
       ? setHeaderAndAnswer(res, err)
       : parseRawParams(req, res, route, rawParams))
   }
+
+  serverHandler.session = req =>
+    session.get(cookie.parse(req.headers.cookie || '')[session.key], req)
+  return serverHandler
 }
